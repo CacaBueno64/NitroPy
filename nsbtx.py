@@ -53,7 +53,3 @@ class G3dTexture4x4Info:
             self.Read(data)
     def Read(self, data):
         pass
-
-with open("./models/mr20b01t01.nsbtx", 'rb') as file:
-    data = BytesIO(file.read())
-    Nsbtx(data)
