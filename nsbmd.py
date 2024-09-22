@@ -296,7 +296,3 @@ class G3dEnvelope:
         for y in range(3):
             for x in range(3):
                 self.InverseDirectionMatrix[y, x] = read_fx32(data_stream)
-
-with open("./models/psf00000100.nsbmd", 'rb') as file:
-    data = BytesIO(file.read())
-    Nsbmd(data)
