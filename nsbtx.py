@@ -2,6 +2,9 @@ from struct import unpack, unpack_from, calcsize
 from io import BytesIO
 from nitro import *
 
+######################
+# WON'T WORK
+######################
 class Nsbtx:
     Btx0Signature = 0x30585442
     def __init__(self, data):
