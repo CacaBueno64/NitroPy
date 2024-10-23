@@ -127,6 +127,34 @@ class PaletteToMaterialDictionaryData:
         self.MaterialCount = flags >> 16 & 0x7F
         self.Bound = flags >> 24 & 0xFF
 
+class TextureDictionaryData:
+    DataSize = 8
+    
+    def __init__(self, reader=None, writer=None):
+        self.ParamExOrigWMask = 0x000007ff
+        self.ParamExOrigHMask = 0x003ff800
+        self.ParamExWHSameMask = 0x80000000
+        self.ParamExOrigWShift = 0
+        self.ParamExOrigHShift = 11
+        self.ParamExWHSameShift = 31
+        if reader:
+            self.Read(reader)
+    
+    def Read(self, reader):
+        self.TexImageParam = GxTexImageParam(unpack("<I", reader.read(4))[0])
+        self.ExtraParam = unpack("<I", reader.read(4))[0]
+
+class PaletteDictionaryData:
+    DataSize = 4
+    
+    def __init__(self, reader=None, writer=None):
+        if reader:
+            self.Read(reader)
+    
+    def Read(self, reader):
+        self.Offset = unpack("<H", reader.read(2))[0]
+        self.Flags = unpack("<H", reader.read(2))[0]
+
 
 class GxPolygonAttr:
     def __init__(self, value):
@@ -134,9 +162,24 @@ class GxPolygonAttr:
 class GxTexImageParam:
     def __init__(self, value):
         self._value = value
+        self.Address = self._value & 0xFFFF
+        self.RepeatS: bool = (self._value & (1 << 16)) != 0
+        self.RepeatT: bool = (self._value & (1 << 17)) != 0
+        self.FlipS: bool = (self._value & (1 << 18)) != 0
+        self.FlipT: bool = (self._value & (1 << 19)) != 0
+        self.Width = (self._value >> 20) & 7
+        self.Height = (self._value >> 23) & 7
+        self.Format = ImageFormat((self._value >> 26) & 7)
+        self.Color0Transparent: bool = (self._value & (1 << 29)) != 0
+        self.TexGen = GxTexGen((self._value >> 30) & 3)
 
 class GxEnum(Enum):
     pass
+class GxTexGen(Enum):
+    Null = 0
+    TexCoord = 1
+    Normal = 2
+    Vertex = 3
 
 
 def ReadFx16(reader):
@@ -151,6 +194,25 @@ def ReadVecFx16(reader):
     return tuple([ReadFx16(reader) for i in range(3)])
 def ReadVecFx32(reader):
     return tuple([ReadFx32(reader) for i in range(3)])
+
+def ReadU16Le(data: bytes, count: int):
+    return list(unpack('<' + 'H' * count, data[:count * 2]))
+
+class ImageFormat(Enum):
+    Null = 0
+    A3I5 = 1
+    Pltt4 = 2
+    Pltt16 = 3
+    Pltt256 = 4
+    Comp4x4 = 5
+    A5I3 = 6
+    Direct = 7
+class CharFormat(Enum):
+    Char = 0
+    Bmp = 1
+class MapFormat(Enum):
+    Text = 0
+    Affine = 1
 
 
 class GLDisplayListBuffer:
