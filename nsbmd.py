@@ -18,7 +18,8 @@ class Nsbmd:
             reader.seek(Header.BlockOffsets[0])
             self.ModelSet = G3dModelSet(reader=reader)
         if Header.NrBlocks > 1:
-            pass # nsbtx
+            reader.seek(Header.BlockOffsets[1])
+            self.TextureSet = G3dTextureSet(reader=reader)
 
 class G3dModelSet:
     def __init__(self, reader=None, writer=None):
@@ -56,11 +57,9 @@ class G3dModel:
         self.Materials = G3dMaterialSet(reader=reader)
         reader.seek(ShapesOffset + beginChunk)
         self.Shapes = G3dShapeSet(reader=reader)
-        print(hex(reader.tell()))
         if EnvelopeMatricesOffset != Size and EnvelopeMatricesOffset != 0:
             reader.seek(EnvelopeMatricesOffset + beginChunk)
             self.EnvelopeMatrices = G3dEnvelopeMatrices(reader=reader, nodeCount=self.Nodes.NodeDictionary.Count())
-        print(hex(reader.tell()))
 
 class G3dModelInfo:
     def __init__(self, reader=None, writer=None):
@@ -249,7 +248,6 @@ class G3dShape:
         DisplayListOffset = unpack("<I", reader.read(4))[0]
         DisplayListSize = unpack("<I", reader.read(4))[0]
         reader.seek(DisplayListOffset + beginChunk)
-        print(reader.tell())
         self.DisplayList = reader.read(DisplayListSize)
 
 class G3dEnvelopeMatrices:
