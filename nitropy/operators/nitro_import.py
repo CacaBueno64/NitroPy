@@ -56,7 +56,6 @@ def make_mesh(model):
                 else:
                     colors.append(vertex.NormalOrColor)
             if vertex.TexCoord:
-                print(vertex.TexCoord)
                 texcoords.append(vertex.TexCoord)
         
         mesh.from_pydata(positions, [], triangulate([indices]))
