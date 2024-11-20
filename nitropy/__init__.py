@@ -1,10 +1,14 @@
 import bpy
 import pip
 from .operators import *
+from .binary import *
 
 if "nitro_import" in locals():
     importlib.reload(nitro_import)
+if "binary" in locals():
     importlib.reload(nsbmd)
+    importlib.reload(nitro)
+    importlib.reload(gxcommands)
 
 bl_info = {
         "name": "NitroPy",
