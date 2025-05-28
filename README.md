@@ -5,7 +5,7 @@ NitroPy is a Blender plugin that imports Nitro System binary files from NDS game
 Export options are planned but for now I'm focusing on imports.
 
 ## Supported formats (import) :
-- Nsbmd (model data) : ✔️
+- Nsbmd (model data) : ✔️ (joints not supported yet)
 - Nsbtx (texture) : ❎
 - Nsbca (characted animation) : ❎
 - Nsbta (texture animation) : ❎
