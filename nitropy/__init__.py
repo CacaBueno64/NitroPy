@@ -8,7 +8,9 @@ if "nitro_import" in locals():
 if "binary" in locals():
     importlib.reload(nsbmd)
     importlib.reload(nitro)
-    importlib.reload(gxcommands)
+    importlib.reload(sbc)
+    importlib.reload(displaylist)
+    importlib.reload(model)
 
 bl_info = {
         "name": "NitroPy",
