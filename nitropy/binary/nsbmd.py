@@ -1,114 +1,87 @@
+from .nitro import *
 from struct import unpack, unpack_from, calcsize
 from io import BytesIO
 from enum import Enum
-import numpy as np
-from .nitro import *
-#from nsbtx import *
-from .gxcommands import *
+from mathutils import Matrix, Vector
 
 class Nsbmd:
-    def __init__(self, reader=None, writer=None):
-        self.Bmd0Signature = 0x30444D42
-        if reader:
-            self.Read(reader)
-    
-    def Read(self, reader):
-        Header = G3dFileHeader(reader=reader, expectedSignature=self.Bmd0Signature)
-        if Header.NrBlocks > 0:
-            reader.seek(Header.BlockOffsets[0])
-            self.ModelSet = G3dModelSet(reader=reader)
-        #if Header.NrBlocks > 1:
-        #    reader.seek(Header.BlockOffsets[1])
-        #    self.TextureSet = G3dTextureSet(reader=reader)
+    def __init__(self, reader):
+        self.Header = G3dFileHeader(reader, 0x30444D42)
+        if self.Header.NrBlocks > 0:
+            reader.seek(self.Header.BlockOffsets[0])
+            self.ModelSet = G3dModelSet(reader)
 
 class G3dModelSet:
-    def __init__(self, reader=None, writer=None):
-        self.Mdl0Signature = 0x304C444D
-        if reader:
-            self.Read(reader)
-    
-    def Read(self, reader):
-        beginChunk = reader.tell()
-        ReadSignature(reader, self.Mdl0Signature)
+    def __init__(self, reader):
+        BeginChunk = reader.tell()
+        
+        signature = reader.read(4)
+        if signature != b"MDL0":
+            raise Exception(f"Wrong signature, got : {signature}, exepted : MDL0")
         sectionSize = unpack("<I", reader.read(4))[0]
-        self.Dictionary = G3dDictionary(reader=reader, TData=OffsetDictionaryData)
-        self.Models = [None] * self.Dictionary.Count()
-        for i in range(self.Dictionary.Count()):
-            reader.seek(self.Dictionary.Data[i].Data.Offset + beginChunk)
-            self.Models[i] = G3dModel(reader=reader)
+        self.Dictionary = G3dDictionary(reader, OffsetDictionaryData)
+        self.Models = []
+        for i in range(len(self.Dictionary)):
+            reader.seek(BeginChunk + self.Dictionary.Data[i].Data.Offset)
+            self.Models.append(G3dModel(reader))
 
 class G3dModel:
-    def __init__(self, reader=None, writer=None):
-        if reader:
-            self.Read(reader)
-    
-    def Read(self, reader):
-        beginChunk = reader.tell()
+    def __init__(self, reader):
+        BeginChunk = reader.tell()
+        
         Size = unpack("<I", reader.read(4))[0]
-        SbcOffset = unpack("<I", reader.read(4))[0]
+        self.SbcOffset = unpack("<I", reader.read(4))[0]
         MaterialsOffset = unpack("<I", reader.read(4))[0]
         ShapesOffset = unpack("<I", reader.read(4))[0]
         EnvelopeMatricesOffset = unpack("<I", reader.read(4))[0]
-        self.Info = G3dModelInfo(reader=reader)
-        self.Nodes = G3dNodeSet(reader=reader)
-        reader.seek(SbcOffset + beginChunk)
-        self.Sbc = reader.read(MaterialsOffset - SbcOffset)
-        reader.seek(MaterialsOffset + beginChunk)
-        self.Materials = G3dMaterialSet(reader=reader)
-        reader.seek(ShapesOffset + beginChunk)
-        self.Shapes = G3dShapeSet(reader=reader)
+        self.Info = G3dModelInfo(reader)
+        self.Nodes = G3dNodeSet(reader)
+        reader.seek(BeginChunk + self.SbcOffset)
+        self.Sbc = reader.read(MaterialsOffset - self.SbcOffset)
+        reader.seek(BeginChunk + MaterialsOffset)
+        self.Materials = G3dMaterialSet(reader)
+        reader.seek(BeginChunk + ShapesOffset)
+        self.Shapes = G3dShapeSet(reader)
+        self.EnvelopeMatrices = None
         if EnvelopeMatricesOffset != Size and EnvelopeMatricesOffset != 0:
-            reader.seek(EnvelopeMatricesOffset + beginChunk)
-            self.EnvelopeMatrices = G3dEnvelopeMatrices(reader=reader, nodeCount=self.Nodes.NodeDictionary.Count())
-            print("envelopped")
+            reader.seek(EnvelopeMatricesOffset + BeginChunk)
+            self.EnvelopeMatrices = G3dEnvelopeMatrices(reader, len(self.Nodes.NodeDictionary))
 
 class G3dModelInfo:
-    def __init__(self, reader=None, writer=None):
-        if reader:
-            self.Read(reader)
-    
-    def Read(self, reader):
+    def __init__(self, reader):
+        BeginChunk = reader.tell()
+        
         self.SbcType = unpack("<B", reader.read(1))[0]
         self.ScalingRule = unpack("<B", reader.read(1))[0]
+        #print(self.ScalingRule)
         self.TextureMatrixMode = unpack("<B", reader.read(1))[0]
         self.NodeCount = unpack("<B", reader.read(1))[0]
         self.MaterialCount = unpack("<B", reader.read(1))[0]
         self.ShapeCount = unpack("<B", reader.read(1))[0]
-        #reader.read(1) # maybe here
         self.FirstUnusedMatrixStackId = unpack("<B", reader.read(1))[0]
-        reader.read(1) # or here
-        self.PosScale = ReadFx32(reader)
-        self.InversePosScale = ReadFx32(reader)
+        reader.read(1) #dummy
+        self.PosScale, self.InversePosScale = ReadFx32s(reader, 2)
         self.VertexCount = unpack("<H", reader.read(2))[0]
         self.PolygonCount = unpack("<H", reader.read(2))[0]
         self.TriangleCount = unpack("<H", reader.read(2))[0]
         self.QuadCount = unpack("<H", reader.read(2))[0]
-        self.BoxX = ReadFx16(reader)
-        self.BoxY = ReadFx16(reader)
-        self.BoxZ = ReadFx16(reader)
-        self.BoxW = ReadFx16(reader)
-        self.BoxH = ReadFx16(reader)
-        self.BoxD = ReadFx16(reader)
-        self.BoxPosScale = ReadFx32(reader)
-        self.BoxInversePosScale = ReadFx32(reader)
+        self.BoxX, self.BoxY, self.BoxZ = ReadFx16s(reader, 3)
+        self.BoxW, self.BoxH, self.BoxD = ReadFx16s(reader, 3)
+        self.BoxPosScale, self.BoxInversePosScale = ReadFx32s(reader, 2)
 
 class G3dNodeSet:
-    def __init__(self, reader=None, writer=None):
-        if reader:
-            self.Read(reader)
-    
-    def Read(self, reader):
-        beginChunk = reader.tell()
-        self.NodeDictionary = G3dDictionary(reader=reader, TData=OffsetDictionaryData)
-        self.Data = [None] * self.NodeDictionary.Count()
+    def __init__(self, reader):
+        BeginChunk = reader.tell()
+        self.NodeDictionary = G3dDictionary(reader, OffsetDictionaryData)
+        self.Data = []
         curpos = reader.tell()
-        for i in range(self.NodeDictionary.Count()):
-            reader.seek(self.NodeDictionary.Data[i].Data.Offset + beginChunk)
-            self.Data[i] = G3dNodeData(reader=reader)
+        for i in range(len(self.NodeDictionary)):
+            reader.seek(BeginChunk + self.NodeDictionary.Data[i].Data.Offset)
+            self.Data.append(G3dNodeData(reader))
         reader.seek(curpos)
 
 class G3dNodeData:
-    def __init__(self, reader=None, writer=None):
+    def __init__(self, reader):
         self.FLAGS_TRANSLATION_ZERO = 0x0001
         self.FLAGS_ROTATION_ZERO = 0x0002
         self.FLAGS_SCALE_ONE = 0x0004
@@ -121,15 +94,13 @@ class G3dNodeData:
         self.FLAGS_MATRIX_STACK_INDEX_MASK = 0xF800
         self.FLAGS_MATRIX_STACK_INDEX_SHIFT = 11
         self.FLAGS_IDENTITY = self.FLAGS_TRANSLATION_ZERO | self.FLAGS_ROTATION_ZERO | self.FLAGS_SCALE_ONE
-        if reader:
-            self.Read(reader)
-    
-    def Read(self, reader):
+        
         self.Flags = unpack("<H", reader.read(2))[0]
+        
         self._00 = ReadFx16(reader)
         
         if (self.Flags & self.FLAGS_TRANSLATION_ZERO) == 0:
-            self.Translation = ReadVecFx32(reader)
+            self.Translation = Vector(ReadVecFx32(reader))
         if (self.Flags & self.FLAGS_ROTATION_ZERO) == 0 and (self.Flags & self.FLAGS_ROTATION_PIVOT) == 0:
             self._01 = ReadFx16(reader)
             self._02 = ReadFx16(reader)
@@ -143,27 +114,46 @@ class G3dNodeData:
             self.A = ReadFx16(reader)
             self.B = ReadFx16(reader)
         if (self.Flags & self.FLAGS_SCALE_ONE) == 0:
-            self.Scale = ReadVecFx32(reader)
-            self.InverseScale = ReadVecFx32(reader)
+            self.Scale = Vector(ReadVecFx32(reader))
+            self.InverseScale = Vector(ReadVecFx32(reader))
+    
+    def GetTranslation(self, jntAnmResult):
+        if (self.Flags & self.FLAGS_TRANSLATION_ZERO) != 0:
+            jntAnmResult.Flag |= JointAnimationResultFlag.TranslationZero
+        else:
+            jntAnmResult.trans = self.Translation
+    def GetRotation(self, jntAnmResult):
+        if (self.Flags & self.FLAGS_ROTATION_ZERO) != 0:
+            jntAnmResult.Flag |= JointAnimationResultFlag.RotationZero
+        else:
+            if (self.Flags & self.FLAGS_ROTATION_PIVOT) != 0:
+                jntAnmResult.rot = DecodePivotRotation(
+                    (self.Flags & self.FLAGS_ROTATION_PIVOT_INDEX_MASK) >> self.FLAGS_ROTATION_PIVOT_INDEX_SHIFT,
+                    (self.Flags & self.FLAGS_ROTATION_PIVOT_NEGATIVE) != 0,
+                    (self.Flags & self.FLAGS_ROTATION_PIVOT_SIGN_REVERSE_C) != 0,
+                    (self.Flags & self.FLAGS_ROTATION_PIVOT_SIGN_REVERSE_D) != 0,
+                    self.A, self.B)
+            else:
+                rot = [[self._00, self._01, self._02],
+                       [self._10, self._11, self._12],
+                       [self._20, self._21, self._22]]
+                jntAnmResult.rot = rot
 
 class G3dMaterialSet:
-    def __init__(self, reader=None, writer=None):
-        if reader:
-            self.Read(reader)
-    
-    def Read(self, reader):
+    def __init__(self, reader):
         beginChunk = reader.tell()
+        
         textureToMaterialListDictionaryOffset = unpack("<H", reader.read(2))[0]
         paletteToMaterialListDictionaryOffset = unpack("<H", reader.read(2))[0]
-        self.MaterialDictionary = G3dDictionary(reader=reader, TData=OffsetDictionaryData)
+        self.MaterialDictionary = G3dDictionary(reader, OffsetDictionaryData)
         reader.seek(textureToMaterialListDictionaryOffset + beginChunk)
-        self.TextureToMaterialListDictionary = G3dDictionary(reader=reader, TData=TextureToMaterialDictionaryData)
+        self.TextureToMaterialListDictionary = G3dDictionary(reader, TextureToMaterialDictionaryData)
         reader.seek(paletteToMaterialListDictionaryOffset + beginChunk)
-        self.PaletteToMaterialListDictionary = G3dDictionary(reader=reader, TData=PaletteToMaterialDictionaryData)
-        self.Materials = [None] * self.MaterialDictionary.Count()
-        for i in range(self.MaterialDictionary.Count()):
+        self.PaletteToMaterialListDictionary = G3dDictionary(reader, PaletteToMaterialDictionaryData)
+        self.Materials = []
+        for i in range(len(self.MaterialDictionary)):
             reader.seek(self.MaterialDictionary.Data[i].Data.Offset + beginChunk)
-            self.Materials[i] = G3dMaterial(reader=reader)
+            self.Materials.append(G3dMaterial(reader))
         for item in self.TextureToMaterialListDictionary.Data:
             reader.seek(item.Data.Offset + beginChunk)
             item.Data.Materials.append(reader.read(item.Data.MaterialCount))
@@ -172,13 +162,10 @@ class G3dMaterialSet:
             item.Data.Materials.append(reader.read(item.Data.MaterialCount))
 
 class G3dMaterial:
-    def __init__(self, reader=None, writer=None):
-        if reader:
-            self.Read(reader)
-    
-    def Read(self, reader):
+    def __init__(self, reader):
         beginChunk = reader.tell()
-        ItemTag = unpack("<H", reader.read(2))[0]
+        
+        self.ItemTag = unpack("<H", reader.read(2))[0]
         Size = unpack("<H", reader.read(2))[0]
         self.DiffuseAmbient = unpack("<I", reader.read(4))[0]
         self.SpecularEmission = unpack("<I", reader.read(4))[0]
@@ -202,10 +189,11 @@ class G3dMaterial:
             self.TranslationS = ReadFx32(reader)
             self.TranslationT = ReadFx32(reader)
         if self.Flags & G3dMaterialFlags.EffectMtx.value == G3dMaterialFlags.EffectMtx.value:
-            self.EffectMtx = np.zeros((4, 4), dtype=np.float32)
-            for i in range(4):
-                for j in range(4):
-                    self.EffectMtx[i, j] = ReadFx32(reader)
+            m = ReadFx32s(reader, 16)
+            self.EffectMtx = Matrix([[m[0],  m[1],  m[2],  m[3]],
+                                     [m[4],  m[5],  m[6],  m[7]],
+                                     [m[8],  m[9],  m[10], m[11]],
+                                     [m[12], m[13], m[14], m[15]]])
 
 class G3dMaterialFlags(Enum):
     TexMtxUse = 0x0001
@@ -224,54 +212,42 @@ class G3dMaterialFlags(Enum):
     EffectMtx = 0x2000
 
 class G3dShapeSet:
-    def __init__(self, reader=None, writer=None):
-        if reader:
-            self.Read(reader)
-    
-    def Read(self, reader):
-        beginChunk = reader.tell()
-        self.ShapeDictionary = G3dDictionary(reader=reader, TData=OffsetDictionaryData)
-        self.Shapes = [None] * self.ShapeDictionary.Count()
-        for i in range(self.ShapeDictionary.Count()):
-            reader.seek(self.ShapeDictionary.Data[i].Data.Offset + beginChunk)
-            self.Shapes[i] = G3dShape(reader=reader)
+    def __init__(self, reader):
+        BeginChunk = reader.tell()
+        
+        self.ShapeDictionary = G3dDictionary(reader, OffsetDictionaryData)
+        self.Shapes = []
+        for i in range(len(self.ShapeDictionary)):
+            reader.seek(BeginChunk + self.ShapeDictionary.Data[i].Data.Offset)
+            self.Shapes.append(G3dShape(reader))
 
 class G3dShape:
-    def __init__(self, reader=None, writer=None):
-        if reader:
-            self.Read(reader)
-    
-    def Read(self, reader):
-        beginChunk = reader.tell()
-        ItemTag = unpack("<H", reader.read(2))[0]
+    def __init__(self, reader):
+        BeginChunk = reader.tell()
+        
+        self.ItemTag = unpack("<H", reader.read(2))[0]
         Size = unpack("<H", reader.read(2))[0]
         self.Flags = unpack("<I", reader.read(4))[0]
-        DisplayListOffset = unpack("<I", reader.read(4))[0]
-        DisplayListSize = unpack("<I", reader.read(4))[0]
-        reader.seek(DisplayListOffset + beginChunk)
-        self.DisplayList = reader.read(DisplayListSize)
+        DisplaylistOffset = unpack("<I", reader.read(4))[0]
+        DisplaylistSize = unpack("<I", reader.read(4))[0]
+        reader.seek(BeginChunk + DisplaylistOffset)
+        self.DisplayList = reader.read(DisplaylistSize)
 
 class G3dEnvelopeMatrices:
-    def __init__(self, reader=None, writer=None, nodeCount=None):
-        if reader and nodeCount:
-            self.Read(reader, nodeCount)
-    
-    def Read(self, reader, nodeCount):
-        self.Envelopes = [None] * nodeCount
+    def __init__(self, reader, nodeCount):
+        self.Envelopes = []
         for i in range(nodeCount):
-            self.Envelopes[i] = G3dEnvelope(reader=reader)
+            self.Envelopes.append(G3dEnvelope(reader))
 
 class G3dEnvelope:
-    def __init__(self, reader=None, writer=None):
-        if reader:
-            self.Read(reader)
-    
-    def Read(self, reader):
-        self.InversePositionMatrix = np.zeros((4, 3), dtype=np.float32)
-        for i in range(4):
-            for j in range(3):
-                self.InversePositionMatrix[i, j] = ReadFx32(reader)
-        self.InverseDirectionMatrix = np.zeros((3, 3), dtype=np.float32)
-        for i in range(3):
-            for j in range(3):
-                self.InverseDirectionMatrix[i, j] = ReadFx32(reader)
+    def __init__(self, reader):
+        m = ReadFx32s(reader, 16)
+        self.InversePositionMatrix = Matrix([[m[0], m[1],  m[2],  0.0],
+                                             [m[3], m[4],  m[5],  0.0],
+                                             [m[6], m[7],  m[8],  0.0],
+                                             [m[9], m[10], m[11], 1.0]])
+        m = ReadFx32s(reader, 9)
+        self.InverseDirectionMatrix = Matrix([[m[0], m[1], m[2], 0.0],
+                                              [m[3], m[4], m[5], 0.0],
+                                              [m[6], m[7], m[8], 0.0],
+                                              [0.0,  0.0,  0.0,  1.0]])
