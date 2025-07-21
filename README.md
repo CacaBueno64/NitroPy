@@ -7,7 +7,7 @@ Export options are planned but for now I'm focusing on imports.
 ## Supported formats (import) :
 - Nsbmd (model data) : ✔️ (joints not supported yet)
 - Nsbtx (texture) : ❎
-- Nsbca (characted animation) : ❎
+- Nsbca (character animation) : ❎
 - Nsbta (texture animation) : ❎
 - Nsbma (material animation) : ❎
 - Nsbva (visibility animation) : ❎
